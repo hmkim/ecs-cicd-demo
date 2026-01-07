@@ -1,0 +1,74 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CI/CD Demo - ECS Service Creation'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: ci-cd-demo
+    Description: Project name for resource naming
+
+Resources:
+  # ECS Task Definition
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub "${ProjectName}-service"
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: 256
+      Memory: 512
+      ExecutionRoleArn: !Sub "arn:aws:iam::${AWS::AccountId}:role/${ProjectName}-ecs-task-execution-role"
+      TaskRoleArn: !Sub "arn:aws:iam::${AWS::AccountId}:role/${ProjectName}-ecs-task-role"
+      ContainerDefinitions:
+        - Name: app
+          Image: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ProjectName}-app:latest"
+          PortMappings:
+            - ContainerPort: 8080
+              Protocol: tcp
+          Essential: true
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Sub "/ecs/${ProjectName}"
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+          Environment:
+            - Name: PORT
+              Value: "8080"
+
+  # ECS Service
+  ECSService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: !Sub "${ProjectName}-service"
+      Cluster: !Sub "${ProjectName}-cluster"
+      TaskDefinition: !Ref TaskDefinition
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          SecurityGroups:
+            - Fn::ImportValue: !Sub "${ProjectName}-ecs-sg-id"
+          Subnets:
+            - Fn::ImportValue: !Sub "${ProjectName}-public-subnet-1"
+            - Fn::ImportValue: !Sub "${ProjectName}-public-subnet-2"
+          AssignPublicIp: ENABLED
+      LoadBalancers:
+        - ContainerName: app
+          ContainerPort: 8080
+          TargetGroupArn:
+            Fn::ImportValue: !Sub "${ProjectName}-blue-tg-arn"
+
+Outputs:
+  ECSServiceName:
+    Description: ECS Service Name
+    Value: !Ref ECSService
+    Export:
+      Name: !Sub "${ProjectName}-service-name"
+
+  TaskDefinitionArn:
+    Description: Task Definition ARN
+    Value: !Ref TaskDefinition
+    Export:
+      Name: !Sub "${ProjectName}-task-definition-arn"

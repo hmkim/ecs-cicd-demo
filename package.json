@@ -1,0 +1,10 @@
+{
+    "name": "ci-cd-demo",
+    "version": "1.0.0",
+    "scripts": {
+        "lint": "eslint static/js/**/*.js"
+    },
+    "devDependencies": {
+        "eslint": "^8.56.0"
+    }
+}
