@@ -19,12 +19,12 @@
 ### 3. Blue/Green 배포 준비
 - **Blue Target Group**: ci-cd-demo-blue-tg (포트 8080, /health 헬스체크)
 - **Green Target Group**: ci-cd-demo-green-tg (포트 8080, /health 헬스체크)
-- **ALB Listener**: HTTP 80포트, Blue Target Group으로 기본 라우팅
+- **ALB Listener**: HTTP 80포트, Weighted Forward (Blue 100%, Green 0%)
 
 ### 4. IAM 역할 및 사용자
 - **ECS Task Execution Role**: ci-cd-demo-ecs-task-execution-role (ECR 접근)
 - **ECS Task Role**: ci-cd-demo-ecs-task-role (애플리케이션 실행)
-- **CodeDeploy Service Role**: ci-cd-demo-codedeploy-service-role (Blue/Green 배포)
+- **ECS Infrastructure Role**: ecsInfrastructureRoleForLoadBalancers (Blue/Green 배포용 ALB 관리)
 - **GitHub Actions User**: ci-cd-demo-github-actions-user (CI/CD 파이프라인용)
 
 ### 5. 모니터링
@@ -49,9 +49,9 @@ cd /Users/jikjeong/Develop/demo/ci-cd-demo/infrastructure
 ### Phase 2에서 사용할 정보:
 - **ECSClusterName** - ECS 클러스터 이름
 - **ALBDNSName** - 로드밸런서 주소
+- **ALBListenerArn** - Blue/Green 배포 설정용 리스너 ARN
 - **BlueTargetGroupArn** / **GreenTargetGroupArn** - Blue/Green 배포용
 - **VPCId**, **PublicSubnet1Id**, **PublicSubnet2Id** - 네트워크 정보
 - **ECSSecurityGroupId** - 보안 그룹
 - **ECSTaskExecutionRoleArn**, **ECSTaskRoleArn** - IAM 역할
-
-이 정보들은 Phase 2 (GitHub Actions 파이프라인)에서 사용됩니다.
+- **ECSBlueGreenRoleArn** - ECS Blue/Green 배포용 인프라 역할

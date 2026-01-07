@@ -211,13 +211,18 @@ Resources:
         - Key: Name
           Value: !Sub "${ProjectName}-green-tg"
 
-  # ALB Listener
+  # ALB Listener (configured for Blue/Green with weighted target groups)
   ALBListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
       DefaultActions:
         - Type: forward
-          TargetGroupArn: !Ref BlueTargetGroup
+          ForwardConfig:
+            TargetGroups:
+              - TargetGroupArn: !Ref BlueTargetGroup
+                Weight: 100
+              - TargetGroupArn: !Ref GreenTargetGroup
+                Weight: 0
       LoadBalancerArn: !Ref ApplicationLoadBalancer
       Port: 80
       Protocol: HTTP
@@ -278,6 +283,22 @@ Resources:
             Principal:
               Service: ecs-tasks.amazonaws.com
             Action: sts:AssumeRole
+
+  # ECS Infrastructure Role for Load Balancers (Blue/Green deployments)
+  ECSInfrastructureRoleForLoadBalancers:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ecsInfrastructureRoleForLoadBalancers
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowAccessToECSForInfrastructureManagement
+            Effect: Allow
+            Principal:
+              Service: ecs.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonECSInfrastructureRolePolicyForLoadBalancers
 
   # CloudWatch Log Group
   LogGroup:
@@ -352,6 +373,12 @@ Outputs:
     Export:
       Name: !Sub "${ProjectName}-alb-dns"
 
+  ALBListenerArn:
+    Description: ALB Listener ARN for Blue/Green deployment
+    Value: !Ref ALBListener
+    Export:
+      Name: !Sub "${ProjectName}-alb-listener-arn"
+
   BlueTargetGroupArn:
     Description: Blue Target Group ARN
     Value: !Ref BlueTargetGroup
@@ -399,6 +426,12 @@ Outputs:
     Value: !GetAtt ECSTaskRole.Arn
     Export:
       Name: !Sub "${ProjectName}-task-role-arn"
+
+  ECSBlueGreenRoleArn:
+    Description: ECS Infrastructure Role ARN for Load Balancers (Blue/Green deployments)
+    Value: !GetAtt ECSInfrastructureRoleForLoadBalancers.Arn
+    Export:
+      Name: !Sub "${ProjectName}-ecs-infra-role-arn"
 
   GitHubActionsAccessKeyId:
     Description: GitHub Actions Access Key ID

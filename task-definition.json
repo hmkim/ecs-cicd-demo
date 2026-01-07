@@ -4,7 +4,7 @@
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "256",
   "memory": "512",
-  "executionRoleArn": "arn:aws:iam::{ACCOUNT_ID}}:role/ci-cd-demo-ecs-task-execution-role",
+  "executionRoleArn": "arn:aws:iam::{ACCOUNT_ID}:role/ci-cd-demo-ecs-task-execution-role",
   "taskRoleArn": "arn:aws:iam::{ACCOUNT_ID}:role/ci-cd-demo-ecs-task-role",
   "containerDefinitions": [
     {
