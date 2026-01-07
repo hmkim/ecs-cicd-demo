@@ -413,7 +413,7 @@ deploy:
 3. **CloudWatch 알람** - 사용자 정의 메트릭 임계값 초과 (설정 시)
 4. **수동 중단** - 콘솔에서 배포 중단
 
-### 테스트 시나리오: 헬스체크 실패 (권장)
+### 테스트 방법 1: 헬스체크 실패 (권장)
 
 ```python
 # app.py 수정
@@ -427,6 +427,78 @@ def health():
 2. Green 태스크 시작 ✅
 3. 헬스체크 ❌ (3회 실패)
 4. **자동 롤백** → Blue 유지
+
+### 테스트 방법 2: CloudWatch 알람 기반 롤백
+
+#### Step 1: CloudWatch 알람 생성
+
+```
+CloudWatch → 알람 → 알람 생성
+```
+
+| 항목 | 값 |
+|------|-----|
+| 지표 | `ApplicationELB → Per AppELB Metrics → HTTPCode_ELB_5XX_Count` |
+| 로드 밸런서 | `ci-cd-demo-alb` |
+| 통계 | 합계 (Sum) |
+| 기간 | 1분 |
+| 조건 | 보다 큼 > **10** |
+| 알람 이름 | `ci-cd-demo-5xx-alarm` |
+
+> 💡 `HTTPCode_ELB_5XX_Count`는 ALB 전체 지표라서 Blue/Green 어디서든 에러 감지 가능
+
+**CLI로 생성**:
+```bash
+ALB_SUFFIX=$(aws elbv2 describe-load-balancers \
+  --names ci-cd-demo-alb \
+  --query 'LoadBalancers[0].LoadBalancerArn' \
+  --output text --region ap-northeast-2 | cut -d: -f6 | cut -d/ -f2-)
+
+aws cloudwatch put-metric-alarm \
+  --alarm-name ci-cd-demo-5xx-alarm \
+  --metric-name HTTPCode_ELB_5XX_Count \
+  --namespace AWS/ApplicationELB \
+  --statistic Sum \
+  --period 60 \
+  --threshold 10 \
+  --comparison-operator GreaterThanThreshold \
+  --evaluation-periods 1 \
+  --dimensions Name=LoadBalancer,Value=$ALB_SUFFIX \
+  --region ap-northeast-2
+```
+
+#### Step 2: ECS 서비스에 알람 연결
+
+```
+ECS → 서비스 → 배포 탭 → 편집 → "CloudWatch 알람 사용" 활성화 → 알람 선택
+```
+
+#### Step 3: 테스트 코드
+
+```python
+import random
+
+@app.route('/')
+def home():
+    if random.random() < 0.5:  # 50% 에러
+        return "Error", 500
+    return "OK", 200
+
+@app.route('/health')
+def health():
+    return "OK", 200  # 헬스체크는 통과
+```
+
+#### Step 4: 트래픽 발생
+
+```bash
+for i in {1..100}; do
+  curl -s http://ALB_DNS_NAME/
+  sleep 0.5
+done
+```
+
+**예상 결과**: 5xx 에러 증가 → 알람 트리거 → 자동 롤백
 
 ### 롤백 확인 방법
 

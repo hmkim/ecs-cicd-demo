@@ -118,29 +118,105 @@ def health():
 ## 시나리오 5: CloudWatch 알람 기반 롤백
 
 ### 설명
-애플리케이션 메트릭(에러율, 지연시간)이 임계값 초과 시 롤백
+애플리케이션 메트릭(에러율)이 임계값 초과 시 자동 롤백
 
-### 사전 설정
-1. CloudWatch 알람 생성 (예: 5xx 에러율 > 10%)
-2. ECS 서비스에 알람 연결
+### Step 1: CloudWatch 알람 생성
 
-### 코드 변경 (app.py)
+**콘솔 경로**:
+```
+CloudWatch → 알람 → 알람 생성
+```
+
+**설정값**:
+
+| 항목 | 값 |
+|------|-----|
+| 지표 선택 | `ApplicationELB → Per AppELB Metrics → HTTPCode_ELB_5XX_Count` |
+| 로드 밸런서 | `ci-cd-demo-alb` |
+| 통계 | 합계 (Sum) |
+| 기간 | 1분 |
+| 조건 | 보다 큼 > **10** |
+| 알람 이름 | `ci-cd-demo-5xx-alarm` |
+
+> 💡 `HTTPCode_ELB_5XX_Count`는 ALB 전체 지표라서 Blue/Green 어디서든 에러 감지 가능
+
+**CLI로 생성**:
+```bash
+# ALB ARN suffix 확인  
+ALB_SUFFIX=$(aws elbv2 describe-load-balancers \
+  --names ci-cd-demo-alb \
+  --query 'LoadBalancers[0].LoadBalancerArn' \
+  --output text --region ap-northeast-2 | cut -d: -f6 | cut -d/ -f2-)
+
+# 알람 생성 (ALB 전체 지표)
+aws cloudwatch put-metric-alarm \
+  --alarm-name ci-cd-demo-5xx-alarm \
+  --metric-name HTTPCode_ELB_5XX_Count \
+  --namespace AWS/ApplicationELB \
+  --statistic Sum \
+  --period 60 \
+  --threshold 10 \
+  --comparison-operator GreaterThanThreshold \
+  --evaluation-periods 1 \
+  --dimensions Name=LoadBalancer,Value=$ALB_SUFFIX \
+  --region ap-northeast-2
+```
+
+### Step 2: ECS 서비스에 알람 연결
+
+**콘솔 경로**:
+```
+ECS → 클러스터 → ci-cd-demo-cluster → 서비스 → 배포 탭 → 편집
+```
+
+1. "배포 실패 감지" 섹션
+2. "CloudWatch 알람 사용" 활성화
+3. 알람 선택: `ci-cd-demo-5xx-alarm`
+4. 업데이트
+
+### Step 3: 테스트 코드 (app.py)
+
 ```python
 import random
 
 @app.route('/')
 def home():
-    # 50% 확률로 500 에러 반환
+    # 50% 확률로 500 에러
     if random.random() < 0.5:
         return "Internal Server Error", 500
     return "Hello World", 200
+
+@app.route('/health')
+def health():
+    return "OK", 200  # 헬스체크는 통과
+```
+
+### Step 4: 트래픽 발생
+
+```bash
+# 100회 요청으로 5xx 에러 유도
+for i in {1..100}; do
+  curl -s -o /dev/null -w "%{http_code}\n" http://ALB_DNS_NAME/
+  sleep 0.5
+done
 ```
 
 ### 예상 결과
-1. Green 환경 배포 ✅ 성공
-2. 트래픽 전환 후 에러율 증가
-3. CloudWatch 알람 트리거
-4. **자동 롤백** → Blue 환경 복구
+1. 새 버전 배포 완료 (Green)
+2. 트래픽 전환
+3. 50% 에러 발생 → 5xx 카운트 증가
+4. CloudWatch 알람 트리거
+5. **자동 롤백** → Blue 환경 복구
+
+### 확인 방법
+
+```bash
+# 알람 상태 확인
+aws cloudwatch describe-alarms \
+  --alarm-names ci-cd-demo-5xx-alarm \
+  --query 'MetricAlarms[0].StateValue' \
+  --region ap-northeast-2
+```
 
 ---
 
