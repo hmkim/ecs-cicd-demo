@@ -6,8 +6,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def hello():
-    
-    hostname = socket.gethostname()[:12]  # ECS Task ID 앞부분
+    hostname = socket.gethostname()[:12]  
     return render_template("index.html", message=f" CI/CD test - [current env]  Task: {hostname}")
 
 @app.route("/health")
